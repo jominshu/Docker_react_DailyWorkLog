@@ -107,6 +107,12 @@ export default function DailyWorkRecords() {
   const [employeeWorkHours, setEmployeeWorkHours] = useState(null);
   const [employeeWorkLoading, setEmployeeWorkLoading] = useState(false);
   const [employeeWorkError, setEmployeeWorkError] = useState("");
+  const [attendanceTime, setAttendanceTime] = useState({
+    start: "",
+    end: "",
+  });
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceError, setAttendanceError] = useState("");
   const [newAdminEmpno, setNewAdminEmpno] = useState("");
   const [adminActionLoading, setAdminActionLoading] = useState(false);
   const [adminList, setAdminList] = useState([]);
@@ -343,6 +349,9 @@ export default function DailyWorkRecords() {
     setEmployeeWorkHours(null);
     setEmployeeWorkError("");
     setEmployeeWorkLoading(false);
+    setAttendanceTime({ start: "", end: "" });
+    setAttendanceError("");
+    setAttendanceLoading(false);
   }, []);
 
   const handleUnauthorized = useCallback(() => {
@@ -454,6 +463,46 @@ export default function DailyWorkRecords() {
         setEmployeeWorkError("無法連接到伺服器");
       } finally {
         setEmployeeWorkLoading(false);
+      }
+    },
+    [authHeaders, handleUnauthorized, token]
+  );
+
+  const loadAttendanceTime = useCallback(
+    async (date) => {
+      if (!token) {
+        handleUnauthorized();
+        return;
+      }
+      if (!date) {
+        setAttendanceTime({ start: "", end: "" });
+        setAttendanceError("");
+        return;
+      }
+      try {
+        setAttendanceLoading(true);
+        setAttendanceError("");
+        const response = await fetch(
+          `${API_URL}/reports/attendance-time?date=${encodeURIComponent(date)}`,
+          { headers: { ...authHeaders } }
+        );
+        const data = await response.json();
+        if (response.status === 401 || response.status === 403) {
+          handleUnauthorized();
+          return;
+        }
+        if (response.ok) {
+          setAttendanceTime({
+            start: data.start_time || "",
+            end: data.end_time || "",
+          });
+        } else {
+          setAttendanceError(data.error || "載入出勤時間失敗");
+        }
+      } catch (err) {
+        setAttendanceError("無法連接到伺服器");
+      } finally {
+        setAttendanceLoading(false);
       }
     },
     [authHeaders, handleUnauthorized, token]
@@ -1056,6 +1105,17 @@ export default function DailyWorkRecords() {
     (sum, r) => sum + (parseFloat(r.total_hours) || 0),
     0
   );
+
+  useEffect(() => {
+    if (!isLoggedIn || !token) {
+      setAttendanceTime({ start: "", end: "" });
+      setAttendanceError("");
+      setAttendanceLoading(false);
+      return;
+    }
+    loadAttendanceTime(summaryDate);
+  }, [isLoggedIn, loadAttendanceTime, summaryDate, token]);
+
   const normalizeCompanyCodes = (record) =>
     record.sup_compids && record.sup_compids.length
       ? record.sup_compids
@@ -1263,6 +1323,13 @@ export default function DailyWorkRecords() {
   const employeeWorkHoursDisplay = employeeWorkLoading || employeeWorkError
     ? "--"
     : formatHours(employeeWorkHours);
+  const attendanceTimeDisplay = attendanceLoading
+    ? "載入中"
+    : attendanceError
+    ? "--"
+    : attendanceTime.start || attendanceTime.end
+    ? `${attendanceTime.start || "--"} - ${attendanceTime.end || "--"}`
+    : "--";
   const summaryDetailVisibleRows = summaryDetailRows.filter((row) => {
     const hours = Number(row.total_hours);
     return Number.isFinite(hours) && hours > 0;
@@ -1616,7 +1683,7 @@ export default function DailyWorkRecords() {
                 今日日期：{summaryDate}
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full sm:w-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full sm:w-auto">
               <div className="bg-white/15 backdrop-blur rounded-lg px-4 py-3">
                 <div className="text-xs opacity-80">今日時數</div>
                 <div className="text-xl font-bold">{todayHours.toFixed(1)}</div>
@@ -1624,6 +1691,10 @@ export default function DailyWorkRecords() {
               <div className="bg-white/15 backdrop-blur rounded-lg px-4 py-3">
                 <div className="text-xs opacity-80">本月累計時數</div>
                 <div className="text-xl font-bold">{monthlyHours.toFixed(1)}</div>
+              </div>
+              <div className="bg-white/15 backdrop-blur rounded-lg px-4 py-3">
+                <div className="text-xs opacity-80">出勤時間</div>
+                <div className="text-xl font-bold">{attendanceTimeDisplay}</div>
               </div>
             </div>
           </div>
