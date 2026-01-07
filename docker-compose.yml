@@ -1,0 +1,17 @@
+version: "3.9" # Docker Compose 檔案格式版本
+
+services:
+  # --- 後端 API 服務 ---
+  backend:
+    container_name: daily_work_log_backend
+    image: daily-work-log-backend:v4
+    build:
+      context: ./daily-work-log-go-backend # 指定 Dockerfile 所在的資料夾路徑進行編譯
+    restart: unless-stopped
+    env_file:
+      - ./daily-work-log-go-backend/.env # 從外部檔案讀取更多環境變數配置
+    environment:
+      PORT: "5000"              # 告訴後端程式要在容器內監聽哪個端口
+    ports:
+      # 將主機端口（預設 5000）對接到後端容器的 5000 端口
+      - "${BACKEND_PORT:-5000}:5000"
