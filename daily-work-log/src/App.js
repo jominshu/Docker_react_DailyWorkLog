@@ -22,11 +22,114 @@ const PAGE_OPTIONS = [
   { id: "home", label: "新增紀錄" },
   { id: "history", label: "歷史紀錄" },
   { id: "monthly", label: "工時月報" },
-  { id: "summary", label: "支援時數匯總" },
+  { id: "summary", label: "支援工時" },
   { id: "admin", label: "管理員設定" },
   { id: "permissions", label: "權限管理" },
 ];
 const BASE_PAGES = ["home", "history"];
+const EMPLOYEE_SUMMARY_ORDER = [
+  "鄭良玉",
+  "鄭方棋",
+  "李信儀",
+  "彭國彰",
+  "姜禮來",
+  "江東原",
+  "洪培慈",
+  "羅時傑",
+  "姜章明",
+  "張華耿",
+  "余瓊紋",
+  "劉哲宇",
+  "許喬王民",
+];
+const EMPLOYEE_SUMMARY_COMPANY_ORDER = [
+  "AMI",
+  "Ritek Vietnam Corp.",
+  "互力精密",
+  "錸工場",
+  "安可光電",
+  "來穎",
+  "厚聚",
+  "博錸科技",
+  "路明德",
+  "鈺德",
+  "滬錸光電",
+  "錸洋",
+  "錸寶",
+  "達振",
+  "領峰",
+  "全球通多媒體",
+  "Conrexx",
+  "大樂司",
+];
+const EMPLOYEE_SUMMARY_ORDER_INDEX = new Map(
+  EMPLOYEE_SUMMARY_ORDER.map((name, idx) => [name, idx])
+);
+const EMPLOYEE_SUMMARY_COMPANY_ORDER_INDEX = new Map(
+  EMPLOYEE_SUMMARY_COMPANY_ORDER.map((name, idx) => [name, idx])
+);
+const EMPLOYEE_SUMMARY_PERSON_MONTH_DIVISOR = 168;
+
+const sortEmployeeSummaryRows = (rows) => {
+  if (!Array.isArray(rows)) return [];
+  const totalRow = rows.find((row) => row && row.is_total);
+  const normalRows = rows.filter((row) => !row?.is_total);
+  const sortedRows = normalRows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      const aOrder = EMPLOYEE_SUMMARY_ORDER_INDEX.has(a.row.empnm)
+        ? EMPLOYEE_SUMMARY_ORDER_INDEX.get(a.row.empnm)
+        : EMPLOYEE_SUMMARY_ORDER_INDEX.size + 1;
+      const bOrder = EMPLOYEE_SUMMARY_ORDER_INDEX.has(b.row.empnm)
+        ? EMPLOYEE_SUMMARY_ORDER_INDEX.get(b.row.empnm)
+        : EMPLOYEE_SUMMARY_ORDER_INDEX.size + 1;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      const aCompKey = a.row.com_desc || a.row.compid || "";
+      const bCompKey = b.row.com_desc || b.row.compid || "";
+      const aCompOrder = EMPLOYEE_SUMMARY_COMPANY_ORDER_INDEX.has(aCompKey)
+        ? EMPLOYEE_SUMMARY_COMPANY_ORDER_INDEX.get(aCompKey)
+        : EMPLOYEE_SUMMARY_COMPANY_ORDER_INDEX.size + 1;
+      const bCompOrder = EMPLOYEE_SUMMARY_COMPANY_ORDER_INDEX.has(bCompKey)
+        ? EMPLOYEE_SUMMARY_COMPANY_ORDER_INDEX.get(bCompKey)
+        : EMPLOYEE_SUMMARY_COMPANY_ORDER_INDEX.size + 1;
+      if (aCompOrder !== bCompOrder) return aCompOrder - bCompOrder;
+      return a.index - b.index;
+    })
+    .map(({ row }) => row);
+
+  if (!totalRow) {
+    return sortedRows;
+  }
+
+  const totalMonthly = Array.isArray(totalRow.monthly) ? totalRow.monthly : [];
+  const roundTo = (value, decimals) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0;
+    const factor = Math.pow(10, decimals);
+    return Math.round(num * factor) / factor;
+  };
+  const personMonthMonthly = totalMonthly.map((value) =>
+    roundTo(value / EMPLOYEE_SUMMARY_PERSON_MONTH_DIVISOR, 2)
+  );
+  const personMonthTotal = roundTo(
+    personMonthMonthly.reduce((sum, value) => sum + value, 0) / 12,
+    2
+  );
+
+  const hoursRow = {
+    ...totalRow,
+    total_kind: "hours",
+    com_desc: totalRow.com_desc || "小時",
+  };
+  const personMonthRow = {
+    ...totalRow,
+    total_kind: "person_month",
+    com_desc: "人月",
+    monthly: personMonthMonthly,
+    total_hours: personMonthTotal,
+  };
+  return [...sortedRows, hoursRow, personMonthRow];
+};
 
 const ensureBasePages = (pages = []) => {
   const set = new Set(BASE_PAGES);
@@ -94,11 +197,18 @@ export default function DailyWorkRecords() {
   const [monthlyHasQueried, setMonthlyHasQueried] = useState(false);
   const [monthlyCompanyFilter, setMonthlyCompanyFilter] = useState("");
   const [monthlyPage, setMonthlyPage] = useState(1);
+  const [summaryTab, setSummaryTab] = useState("company"); // company | employee
   const [summaryYear, setSummaryYear] = useState("");
   const [summaryMonth, setSummaryMonth] = useState(""); // "" | "all" | 1-12
   const [summaryRows, setSummaryRows] = useState([]);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryHasQueried, setSummaryHasQueried] = useState(false);
+  const [employeeSummaryYear, setEmployeeSummaryYear] = useState("");
+  const [employeeSummaryMonth, setEmployeeSummaryMonth] = useState("");
+  const [employeeSummaryRows, setEmployeeSummaryRows] = useState([]);
+  const [employeeSummaryLoading, setEmployeeSummaryLoading] = useState(false);
+  const [employeeSummaryHasQueried, setEmployeeSummaryHasQueried] =
+    useState(false);
   const [summaryDetailOpen, setSummaryDetailOpen] = useState(false);
   const [summaryDetailCompany, setSummaryDetailCompany] = useState(null);
   const [summaryDetailRows, setSummaryDetailRows] = useState([]);
@@ -539,7 +649,7 @@ export default function DailyWorkRecords() {
           setSummaryRows(data.data || []);
           loadEmployeeWorkHours(year, month);
         } else {
-          setError(data.error || "載入時數匯總失敗");
+          setError(data.error || "載入支援工時匯總失敗");
         }
       } catch (err) {
         setError("無法連接到伺服器");
@@ -555,6 +665,44 @@ export default function DailyWorkRecords() {
       token,
       userPages,
     ]
+  );
+
+  const loadSupportHoursEmployeeSummary = useCallback(
+    async (year, month) => {
+      const canAccess =
+        currentUser.isAdmin || userPages.includes("summary");
+      if (!token || !canAccess) return;
+      if (!year || !month) {
+        setError("請先選擇年與月");
+        return;
+      }
+      try {
+        setEmployeeSummaryHasQueried(true);
+        setEmployeeSummaryLoading(true);
+        setError("");
+        const response = await fetch(
+          `${API_URL}/reports/support-hours-employee-summary?year=${encodeURIComponent(
+            year
+          )}&month=${encodeURIComponent(month)}`,
+          { headers: { ...authHeaders } }
+        );
+        const data = await response.json();
+        if (response.status === 401 || response.status === 403) {
+          handleUnauthorized();
+          return;
+        }
+        if (response.ok) {
+          setEmployeeSummaryRows(data.data || []);
+        } else {
+          setError(data.error || "載入員工匯總失敗");
+        }
+      } catch (err) {
+        setError("無法連接到伺服器");
+      } finally {
+        setEmployeeSummaryLoading(false);
+      }
+    },
+    [authHeaders, currentUser.isAdmin, handleUnauthorized, token, userPages]
   );
 
   const loadSupportHoursDetail = useCallback(
@@ -1201,6 +1349,10 @@ export default function DailyWorkRecords() {
   }, [summaryYear, summaryMonth]);
 
   useEffect(() => {
+    setEmployeeSummaryHasQueried(false);
+  }, [employeeSummaryYear, employeeSummaryMonth]);
+
+  useEffect(() => {
     setMonthlyHasQueried(false);
     setMonthlyPage(1);
   }, [reportYear, reportMonth]);
@@ -1307,6 +1459,13 @@ export default function DailyWorkRecords() {
     ? "全年"
     : String(summaryMonth).padStart(2, "0");
   const summaryYearLabel = summaryYear ? summaryYear : "--";
+  const employeeSummaryYearLabel = employeeSummaryYear ? employeeSummaryYear : "--";
+  const employeeSummaryMonthLabel = !employeeSummaryMonth
+    ? "--"
+    : employeeSummaryMonth === "all"
+    ? "全年"
+    : String(employeeSummaryMonth).padStart(2, "0");
+  const employeeSummaryMonthHeaders = monthOptions;
   const summaryTotalHours = summaryRows.reduce(
     (sum, row) => sum + (parseFloat(row.total_hours) || 0),
     0
@@ -1318,6 +1477,50 @@ export default function DailyWorkRecords() {
       return String(rounded);
     }
     return rounded.toFixed(1);
+  };
+  const formatEmployeeMonth = (value, row) => {
+    const num = Number(value);
+    const isTotal = !!row?.is_total;
+    const isPersonMonth = row?.total_kind === "person_month";
+    if (!Number.isFinite(num)) {
+      return isTotal ? (isPersonMonth ? "0.00" : "0.0") : "";
+    }
+    if (num === 0 && !isTotal) return "";
+    if (isPersonMonth) return num.toFixed(2);
+    return isTotal ? num.toFixed(1) : num.toFixed(2);
+  };
+  const formatEmployeeTotal = (value, row) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "--";
+    if (row?.total_kind === "person_month") return num.toFixed(2);
+    return num.toFixed(1);
+  };
+  const employeeSummaryDisplayRows = useMemo(
+    () => sortEmployeeSummaryRows(employeeSummaryRows),
+    [employeeSummaryRows]
+  );
+  const exportEmployeeSummaryCSV = () => {
+    if (employeeSummaryDisplayRows.length === 0) return;
+    const header = [
+      "支援人員",
+      "負責單位",
+      ...employeeSummaryMonthHeaders.map((m) => String(m)),
+      "合計",
+    ];
+    const rows = employeeSummaryDisplayRows.map((row) => {
+      const isTotal = row.is_total;
+      const months = Array.isArray(row.monthly) ? row.monthly : [];
+      const monthValues = employeeSummaryMonthHeaders.map((_, idx) =>
+        formatEmployeeMonth(months[idx] || 0, row)
+      );
+      return [
+        row.empnm || "-",
+        row.com_desc || row.compid || "-",
+        ...monthValues,
+        formatEmployeeTotal(row.total_hours, row),
+      ];
+    });
+    downloadCSV("支援工時匯總.csv", header, rows);
   };
   const summaryTotalDisplay = formatHours(summaryTotalHours);
   const employeeWorkHoursDisplay = employeeWorkLoading || employeeWorkError
@@ -1341,6 +1544,12 @@ export default function DailyWorkRecords() {
     setSummaryDetailRows([]);
     setSummaryDetailError("");
   };
+
+  useEffect(() => {
+    if (summaryTab !== "company" && summaryDetailOpen) {
+      closeSummaryDetail();
+    }
+  }, [summaryDetailOpen, summaryTab]);
 
   const restrictedPages = ["admin", "permissions"];
 
@@ -1607,7 +1816,7 @@ export default function DailyWorkRecords() {
                     }`}
                   >
                     <BarChart3 size={18} />
-                    支援工時匯總
+                    支援工時
                   </button>
                 )}
                 {currentUser.isAdmin && (
@@ -2537,138 +2746,321 @@ export default function DailyWorkRecords() {
           </div>
         )}
 
-        {/* 時數匯總頁面 */}
+        {/* 支援工時頁面 */}
         {currentPage === "summary" &&
           (currentUser.isAdmin || userPages.includes("summary")) && (
           <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-              <h2 className="text-xl font-semibold text-gray-700">
-                時數匯總
-              </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-3 w-full md:w-auto">
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <label className="text-sm font-medium text-gray-700">
-                  年
-                </label>
-                <select
-                  className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  value={summaryYear}
-                  onChange={(e) =>
-                    setSummaryYear(
-                      e.target.value ? parseInt(e.target.value, 10) : ""
-                    )
-                  }
-                >
-                  <option value="">請選擇</option>
-                  {yearOptions.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <label className="text-sm font-medium text-gray-700">
-                    月
-                  </label>
-                <select
-                  className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  value={summaryMonth}
-                  onChange={(e) => setSummaryMonth(e.target.value)}
-                >
-                  <option value="">請選擇</option>
-                  <option value="all">全年</option>
-                  {monthOptions.map((m) => (
-                    <option key={m} value={String(m)}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 w-full sm:w-auto"
-                  onClick={() => {
-                    if (!summaryYear || !summaryMonth) {
-                      setError("請先選擇年與月");
-                      return;
-                    }
-                    loadSupportHoursSummary(summaryYear, summaryMonth);
-                  }}
-                  disabled={summaryLoading}
-                >
-                  {summaryLoading ? "載入中..." : "查詢"}
-                </button>
+            <div className="flex flex-col gap-4 mb-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <h2 className="text-xl font-semibold text-gray-700">
+                  支援工時
+                </h2>
+                <div className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 p-1">
                   <button
                     type="button"
-                    className="px-4 py-2 border border-blue-600 text-blue-600 rounded-md hover:bg-blue-50 disabled:opacity-50 w-full sm:w-auto"
-                    onClick={exportSummaryCSV}
-                    disabled={summaryRows.length === 0}
+                    onClick={() => setSummaryTab("company")}
+                    className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                      summaryTab === "company"
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-gray-600 hover:text-blue-600"
+                    }`}
                   >
-                    匯出 CSV
+                    按公司匯總
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSummaryTab("employee")}
+                    className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                      summaryTab === "employee"
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-gray-600 hover:text-blue-600"
+                    }`}
+                  >
+                    按員工匯總
                   </button>
                 </div>
               </div>
-            </div>
 
-            <div className="text-sm text-gray-600 mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <span>
-                查詢期間：{summaryYearLabel}-{summaryMonthLabel}
-              </span>
-              <div className="font-semibold text-gray-700 text-right">
-                <div className="text-xs text-gray-500">
-                  支援總時數/員工工作總時數
-                </div>
-                <div className="text-base">
-                  {summaryTotalDisplay}/{employeeWorkHoursDisplay}
-                </div>
-              </div>
-            </div>
-
-            {summaryLoading ? (
-              <p className="text-gray-500 text-center py-8">載入中...</p>
-            ) : !summaryHasQueried ? (
-              <p className="text-gray-500 text-center py-8">
-                請選擇年與月後按下查詢
-              </p>
-            ) : summaryRows.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">
-                此期間沒有資料或您無權限查看
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {summaryRows.map((row) => (
-                  <div
-                    key={row.compid}
-                    className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => loadSupportHoursDetail(row)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        loadSupportHoursDetail(row);
+              {summaryTab === "company" ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-3 w-full md:w-auto">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <label className="text-sm font-medium text-gray-700">
+                      年
+                    </label>
+                    <select
+                      className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      value={summaryYear}
+                      onChange={(e) =>
+                        setSummaryYear(
+                          e.target.value ? parseInt(e.target.value, 10) : ""
+                        )
                       }
-                    }}
-                  >
-                    <div className="text-lg font-semibold text-gray-800">
-                      {row.com_desc}
+                    >
+                      <option value="">請選擇</option>
+                      {yearOptions.map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <label className="text-sm font-medium text-gray-700">
+                      月
+                    </label>
+                    <select
+                      className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      value={summaryMonth}
+                      onChange={(e) => setSummaryMonth(e.target.value)}
+                    >
+                      <option value="">請選擇</option>
+                      <option value="all">全年</option>
+                      {monthOptions.map((m) => (
+                        <option key={m} value={String(m)}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 w-full sm:w-auto"
+                      onClick={() => {
+                        if (!summaryYear || !summaryMonth) {
+                          setError("請先選擇年與月");
+                          return;
+                        }
+                        loadSupportHoursSummary(summaryYear, summaryMonth);
+                      }}
+                      disabled={summaryLoading}
+                    >
+                      {summaryLoading ? "載入中..." : "查詢"}
+                    </button>
+                    <button
+                      type="button"
+                      className="px-4 py-2 border border-blue-600 text-blue-600 rounded-md hover:bg-blue-50 disabled:opacity-50 w-full sm:w-auto"
+                      onClick={exportSummaryCSV}
+                      disabled={summaryRows.length === 0}
+                    >
+                      匯出 CSV
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-3 w-full md:w-auto">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <label className="text-sm font-medium text-gray-700">
+                      年
+                    </label>
+                    <select
+                      className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      value={employeeSummaryYear}
+                      onChange={(e) =>
+                        setEmployeeSummaryYear(
+                          e.target.value ? parseInt(e.target.value, 10) : ""
+                        )
+                      }
+                    >
+                      <option value="">請選擇</option>
+                      {yearOptions.map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <label className="text-sm font-medium text-gray-700">
+                      月
+                    </label>
+                    <select
+                      className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      value={employeeSummaryMonth}
+                      onChange={(e) => setEmployeeSummaryMonth(e.target.value)}
+                    >
+                      <option value="">請選擇</option>
+                      <option value="all">全年</option>
+                      {monthOptions.map((m) => (
+                        <option key={m} value={String(m)}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 w-full sm:w-auto"
+                      onClick={() =>
+                        loadSupportHoursEmployeeSummary(
+                          employeeSummaryYear,
+                          employeeSummaryMonth
+                        )
+                      }
+                      disabled={employeeSummaryLoading}
+                    >
+                      {employeeSummaryLoading ? "載入中..." : "查詢"}
+                    </button>
+                    <button
+                      type="button"
+                      className="px-4 py-2 border border-blue-600 text-blue-600 rounded-md hover:bg-blue-50 disabled:opacity-50 w-full sm:w-auto"
+                      onClick={exportEmployeeSummaryCSV}
+                      disabled={employeeSummaryRows.length === 0}
+                    >
+                      匯出 CSV
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {summaryTab === "company" ? (
+              <>
+                <div className="text-sm text-gray-600 mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span>
+                    查詢期間：{summaryYearLabel}-{summaryMonthLabel}
+                  </span>
+                  <div className="font-semibold text-gray-700 text-right">
+                    <div className="text-xs text-gray-500">
+                      支援總時數/員工工作總時數
                     </div>
-                    <div className="mt-3 flex items-baseline justify-between">
-                      <span className="text-sm text-gray-600">時數</span>
-                      <span className="text-2xl font-bold text-blue-600">
-                        {Number(row.total_hours || 0).toFixed(1)}
-                      </span>
+                    <div className="text-base">
+                      {summaryTotalDisplay}/{employeeWorkHoursDisplay}
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+
+                {summaryLoading ? (
+                  <p className="text-gray-500 text-center py-8">載入中...</p>
+                ) : !summaryHasQueried ? (
+                  <p className="text-gray-500 text-center py-8">
+                    請選擇年與月後按下查詢
+                  </p>
+                ) : summaryRows.length === 0 ? (
+                  <p className="text-gray-500 text-center py-8">
+                    此期間沒有資料或您無權限查看
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {summaryRows.map((row) => (
+                      <div
+                        key={row.compid}
+                        className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => loadSupportHoursDetail(row)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            loadSupportHoursDetail(row);
+                          }
+                        }}
+                      >
+                        <div className="text-lg font-semibold text-gray-800">
+                          {row.com_desc}
+                        </div>
+                        <div className="mt-3 flex items-baseline justify-between">
+                          <span className="text-sm text-gray-600">時數</span>
+                          <span className="text-2xl font-bold text-blue-600">
+                            {Number(row.total_hours || 0).toFixed(1)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="text-sm text-gray-600 mb-4">
+                  查詢期間：{employeeSummaryYearLabel}-{employeeSummaryMonthLabel}
+                </div>
+                {employeeSummaryLoading ? (
+                  <p className="text-gray-500 text-center py-8">載入中...</p>
+                ) : !employeeSummaryHasQueried ? (
+                  <p className="text-gray-500 text-center py-8">
+                    請選擇年與月後按下查詢
+                  </p>
+                ) : employeeSummaryRows.length === 0 ? (
+                  <p className="text-gray-500 text-center py-8">
+                    此期間沒有資料或您無權限查看
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50 text-gray-600">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium">
+                            支援人員
+                          </th>
+                          <th className="text-left px-3 py-2 font-medium">
+                            負責單位
+                          </th>
+                          {employeeSummaryMonthHeaders.map((month) => (
+                            <th
+                              key={month}
+                              className="text-right px-3 py-2 font-medium"
+                            >
+                              {month}
+                            </th>
+                          ))}
+                          <th className="text-right px-3 py-2 font-medium">
+                            合計
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {employeeSummaryDisplayRows.map((row, index) => {
+                          const isTotal = row.is_total;
+                          const isPersonMonth = row.total_kind === "person_month";
+                          const months = Array.isArray(row.monthly)
+                            ? row.monthly
+                            : [];
+                          return (
+                            <tr
+                              key={`${row.empno || row.empnm}-${row.compid || index}`}
+                              className={`border-b border-gray-100 last:border-b-0 ${
+                                isTotal
+                                  ? isPersonMonth
+                                    ? "bg-emerald-50 font-semibold"
+                                    : "bg-blue-50 font-semibold"
+                                  : ""
+                              }`}
+                            >
+                              <td className="px-3 py-2 text-gray-700">
+                                {row.empnm || "-"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-700">
+                                {row.com_desc || row.compid || "-"}
+                              </td>
+                              {employeeSummaryMonthHeaders.map((month, mIdx) => {
+                                const value = months[mIdx] || 0;
+                                return (
+                                  <td
+                                    key={`${month}-${mIdx}`}
+                                    className="px-3 py-2 text-right text-gray-700"
+                                  >
+                                    {formatEmployeeMonth(value, row)}
+                                  </td>
+                                );
+                              })}
+                              <td className="px-3 py-2 text-right text-gray-800">
+                                {formatEmployeeTotal(row.total_hours, row)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
 
-        {summaryDetailOpen && (
+        {summaryTab === "company" && summaryDetailOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[85vh] overflow-hidden">
               <div className="flex items-start justify-between p-4 border-b border-gray-200">

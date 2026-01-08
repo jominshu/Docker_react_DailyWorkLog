@@ -28,6 +28,16 @@ type SupportHoursDetailRow struct {
 	Description *string    `json:"description"`
 }
 
+type SupportHoursEmployeeSummaryRow struct {
+	EmpNo      string    `json:"empno,omitempty"`
+	EmpNm      string    `json:"empnm"`
+	CompID     string    `json:"compid,omitempty"`
+	ComDesc    string    `json:"com_desc"`
+	Monthly    []float64 `json:"monthly"`
+	TotalHours float64   `json:"total_hours"`
+	IsTotal    bool      `json:"is_total,omitempty"`
+}
+
 // GetSupportHoursSummary 回傳指定年月（或整年）依公司別彙總的支援時數
 // Query: year=YYYY&month=all|1-12
 func GetSupportHoursSummary(c *gin.Context) {
@@ -282,6 +292,225 @@ func GetSupportHoursDetail(c *gin.Context) {
 			SupDate:     &supDateCopy,
 			TotalHours:  &totalHoursCopy,
 			Description: description,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "查詢成功",
+		"data":    result,
+		"count":   len(result),
+	})
+}
+
+// GetSupportHoursEmployeeSummary 回傳指定年月（或整年）依員工與公司別彙總的支援時數
+// Query: year=YYYY&month=all|1-12
+func GetSupportHoursEmployeeSummary(c *gin.Context) {
+	if !HasPagePermission(c.GetString("empno"), c.GetBool("is_admin"), "summary") {
+		c.JSON(http.StatusForbidden, gin.H{"error": "無權限"})
+		return
+	}
+
+	yearStr := strings.TrimSpace(c.Query("year"))
+	monthStr := strings.TrimSpace(c.Query("month"))
+	year, err := strconv.Atoi(yearStr)
+	if err != nil || year < 2000 || year > 2100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "year 參數錯誤"})
+		return
+	}
+
+	monthAll := monthStr == "" || strings.EqualFold(monthStr, "all")
+	month := 0
+	if !monthAll {
+		month, err = strconv.Atoi(monthStr)
+		if err != nil || month < 1 || month > 12 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "month 參數錯誤"})
+			return
+		}
+	}
+
+	if config.OracleDB == nil || config.PostgresDB == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "資料庫尚未連線"})
+		return
+	}
+
+	companyQuery := `
+		SELECT DISTINCT COMPID, COM_DESC
+		FROM RE_R1.REFFACTORY
+		WHERE COM_DESC != '錸寶科技'
+			AND COM_DESC != '銓錸光電'
+			AND COM_DESC != '錸德科技'
+			AND COMPID IN ('A','1','5','61','B','J','R','X','L','S','F','M','G','6','C','D','Z','V')
+		UNION
+		SELECT '0' AS COMPID, 'AMI' AS COM_DESC FROM dual
+	`
+	companyRows, err := config.OracleDB.Query(companyQuery)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Oracle 查詢公司清單失敗",
+			"details": err.Error(),
+		})
+		return
+	}
+	defer companyRows.Close()
+
+	companyNameByID := make(map[string]string)
+	for companyRows.Next() {
+		var compID, comDesc string
+		if err := companyRows.Scan(&compID, &comDesc); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Oracle 公司清單解析失敗",
+				"details": err.Error(),
+			})
+			return
+		}
+		companyNameByID[strings.TrimSpace(compID)] = strings.TrimSpace(comDesc)
+	}
+
+	companyOrder := []string{
+		"0", "A", "1", "5", "61", "B", "J", "R", "X", "L", "S", "F", "M", "G", "6", "C", "D", "Z", "V",
+	}
+	companyIDs := make([]string, 0, len(companyOrder))
+	for _, compID := range companyOrder {
+		if _, ok := companyNameByID[compID]; ok {
+			companyIDs = append(companyIDs, compID)
+		}
+	}
+
+	start := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(1, 0, 0)
+	if !monthAll {
+		start = time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+		end = start.AddDate(0, 1, 0)
+	}
+
+	type employeeInfo struct {
+		EmpNo string
+		EmpNm string
+	}
+	employeeRows, err := config.PostgresDB.Query(`
+		SELECT DISTINCT empno, empnm
+		FROM work_hours
+		WHERE sup_date >= $1 AND sup_date < $2
+		ORDER BY empno, empnm
+	`, start, end)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "PostgreSQL 查詢員工失敗",
+			"details": err.Error(),
+		})
+		return
+	}
+	defer employeeRows.Close()
+
+	employees := make([]employeeInfo, 0, 32)
+	for employeeRows.Next() {
+		var emp employeeInfo
+		if err := employeeRows.Scan(&emp.EmpNo, &emp.EmpNm); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "PostgreSQL 員工解析失敗",
+				"details": err.Error(),
+			})
+			return
+		}
+		emp.EmpNo = strings.TrimSpace(emp.EmpNo)
+		emp.EmpNm = strings.TrimSpace(emp.EmpNm)
+		if emp.EmpNo == "" && emp.EmpNm == "" {
+			continue
+		}
+		employees = append(employees, emp)
+	}
+
+	type monthTotals [12]float64
+	hoursByEmpComp := make(map[string]map[string]*monthTotals)
+
+	aggregateRows, err := config.PostgresDB.Query(`
+		SELECT empno, empnm, sup_compid, EXTRACT(MONTH FROM sup_date)::int AS month, SUM(total_hours) AS total_hours
+		FROM work_hours
+		WHERE sup_date >= $1 AND sup_date < $2
+		GROUP BY empno, empnm, sup_compid, EXTRACT(MONTH FROM sup_date)
+		ORDER BY empno, empnm, sup_compid
+	`, start, end)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "PostgreSQL 彙總失敗",
+			"details": err.Error(),
+		})
+		return
+	}
+	defer aggregateRows.Close()
+
+	for aggregateRows.Next() {
+		var empno, empnm, compID string
+		var month int
+		var total float64
+		if err := aggregateRows.Scan(&empno, &empnm, &compID, &month, &total); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "PostgreSQL 彙總解析失敗",
+				"details": err.Error(),
+			})
+			return
+		}
+		if month < 1 || month > 12 {
+			continue
+		}
+		empno = strings.TrimSpace(empno)
+		compID = strings.TrimSpace(compID)
+		if _, ok := companyNameByID[compID]; !ok {
+			continue
+		}
+		compMap, ok := hoursByEmpComp[empno]
+		if !ok {
+			compMap = make(map[string]*monthTotals)
+			hoursByEmpComp[empno] = compMap
+		}
+		monthMap, ok := compMap[compID]
+		if !ok {
+			monthMap = &monthTotals{}
+			compMap[compID] = monthMap
+		}
+		monthMap[month-1] += total
+		_ = empnm
+	}
+
+	result := make([]SupportHoursEmployeeSummaryRow, 0, len(employees)*len(companyIDs)+1)
+	grandMonthly := make([]float64, 12)
+	var grandTotal float64
+
+	for _, emp := range employees {
+		compMap := hoursByEmpComp[emp.EmpNo]
+		for _, compID := range companyIDs {
+			months := make([]float64, 12)
+			var total float64
+			if compMap != nil {
+				if monthMap, ok := compMap[compID]; ok {
+					for i := 0; i < 12; i++ {
+						months[i] = monthMap[i]
+						total += monthMap[i]
+					}
+				}
+			}
+			for i := 0; i < 12; i++ {
+				grandMonthly[i] += months[i]
+			}
+			grandTotal += total
+			result = append(result, SupportHoursEmployeeSummaryRow{
+				EmpNo:      emp.EmpNo,
+				EmpNm:      emp.EmpNm,
+				CompID:     compID,
+				ComDesc:    companyNameByID[compID],
+				Monthly:    months,
+				TotalHours: total,
+			})
+		}
+	}
+
+	if len(result) > 0 {
+		result = append(result, SupportHoursEmployeeSummaryRow{
+			EmpNm:      "總計",
+			ComDesc:    "小時",
+			Monthly:    grandMonthly,
+			TotalHours: grandTotal,
+			IsTotal:    true,
 		})
 	}
 

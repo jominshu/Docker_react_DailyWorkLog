@@ -37,6 +37,7 @@ func SetupRoutes(router *gin.Engine) {
 			auth.GET("/reports/monthly", handlers.GetMonthlyReport)
 			auth.GET("/reports/support-hours-summary", handlers.GetSupportHoursSummary)
 			auth.GET("/reports/support-hours-details", handlers.GetSupportHoursDetail)
+			auth.GET("/reports/support-hours-employee-summary", handlers.GetSupportHoursEmployeeSummary)
 			auth.GET("/reports/employee-work-hours-total", handlers.GetEmployeeWorkHoursTotal)
 			auth.GET("/reports/attendance-time", handlers.GetAttendanceTime)
 		}
