@@ -329,7 +329,7 @@ func UpdateWorkHours(c *gin.Context) {
 
 	updated.SupCompIDs = []string{updated.SupCompID}
 
-	if input.SupCompIDs != nil {
+	if input.SupCompIDs != nil && len(compIDs) > 1 {
 		_, err = tx.Exec(`
 			UPDATE work_hours
 			SET sup_date = $1,

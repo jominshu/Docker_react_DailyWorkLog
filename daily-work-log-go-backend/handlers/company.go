@@ -19,7 +19,7 @@ func GetCompanies(c *gin.Context) {
 		FROM RE_R1.REFFACTORY 
 		WHERE COM_DESC != '錸寶科技' 
 			AND COM_DESC != '銓錸光電' 
-			AND COMPID IN ('A','1','5','61','B','J','R','X','L','S','F','M','G','6','C','D','Z','V')
+			AND COMPID IN ('A','1','2','5','61','B','J','R','X','L','S','F','M','G','6','C','D','Z','V')
 		UNION
 		SELECT '0' AS COMPID, 'AMI' AS COM_DESC FROM dual
 		ORDER BY COMPID

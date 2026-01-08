@@ -21,7 +21,7 @@ const API_URL = "/api";
 const PAGE_OPTIONS = [
   { id: "home", label: "新增紀錄" },
   { id: "history", label: "歷史紀錄" },
-  { id: "monthly", label: "支援工時月報" },
+  { id: "monthly", label: "工時月報" },
   { id: "summary", label: "支援時數匯總" },
   { id: "admin", label: "管理員設定" },
   { id: "permissions", label: "權限管理" },
@@ -71,7 +71,7 @@ export default function DailyWorkRecords() {
   const [userPages, setUserPages] = useState(["home", "history"]);
   const [currentRecord, setCurrentRecord] = useState({
     companyNames: [],
-    companyCodes: [],
+    companyCodes: null,
     date: new Date().toISOString().split("T")[0],
     hours: "",
     details: "",
@@ -837,12 +837,12 @@ export default function DailyWorkRecords() {
 
   useEffect(() => {
     if (!companyList.length) return;
-    if (currentRecord.companyCodes?.length) return;
+    if (currentRecord.companyCodes != null) return;
     setCurrentRecord((prev) => {
-      if (prev.companyCodes?.length) return prev;
+      if (prev.companyCodes != null) return prev;
       return buildDefaultRecord(companyList);
     });
-  }, [companyList, currentRecord.companyCodes?.length]);
+  }, [companyList, currentRecord.companyCodes]);
 
   // 讀取紀錄
   const loadRecords = useCallback(
@@ -1594,7 +1594,7 @@ export default function DailyWorkRecords() {
                     }`}
                   >
                     <CalendarRange size={18} />
-                    支援工時月報
+                    工時月報
                   </button>
                 )}
                 {(currentUser.isAdmin || userPages.includes("summary")) && (
