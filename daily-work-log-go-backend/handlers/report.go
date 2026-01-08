@@ -87,6 +87,7 @@ func GetMonthlyReport(c *gin.Context) {
 		}
 		companyNameByID[strings.TrimSpace(compID)] = strings.TrimSpace(comDesc)
 	}
+	companyNameByID["2"] = "新寶"
 
 	// 先從 Oracle 取得部門 63% 的在職員工清單
 	// empQuery := `
