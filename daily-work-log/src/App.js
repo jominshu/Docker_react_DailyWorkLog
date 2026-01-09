@@ -155,6 +155,162 @@ const buildDefaultRecord = (list) => {
   };
 };
 
+const MultiSelect = ({ options, value = [], onChange, placeholder }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const selectedItems = options.filter((opt) => value.includes(opt.value));
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const toggleOption = (e, opt) => {
+    e.stopPropagation();
+    const exists = value.includes(opt.value);
+    const next = exists
+      ? value.filter((v) => v !== opt.value)
+      : [...value, opt.value];
+    onChange(next);
+  };
+
+  const removeItem = (e, val) => {
+    e.stopPropagation();
+    onChange(value.filter((v) => v !== val));
+  };
+
+  const clearAll = (e) => {
+    e.stopPropagation();
+    onChange([]);
+  };
+
+  const confirmSelection = (e) => {
+    e.stopPropagation();
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative z-50" ref={dropdownRef}>
+      <div
+        onClick={() => setIsOpen((p) => !p)}
+        className="min-h-[48px] w-full px-3 py-2 border border-gray-300 rounded-md cursor-pointer hover:border-blue-400 transition-colors bg-white flex items-center justify-between"
+      >
+        <div className="flex flex-wrap gap-2 flex-1">
+          {selectedItems.length === 0 ? (
+            <span className="text-gray-400">
+              {placeholder || "請選擇公司"}
+            </span>
+          ) : (
+            selectedItems.map((item) => (
+              <span
+                key={item.value}
+                className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-xs font-medium"
+              >
+                {item.label}
+                <button
+                  type="button"
+                  onClick={(e) => removeItem(e, item.value)}
+                  className="hover:bg-blue-100 rounded-full p-0.5 transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+        <ChevronDown
+          size={18}
+          className={`ml-2 text-gray-500 transition-transform ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      </div>
+
+      {isOpen && (
+        <>
+          {/* 全屏遮罩，避免點到背景內容 */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsOpen(false)}
+          />
+          <div
+            className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {options.map((opt) => {
+              const isSelected = value.includes(opt.value);
+              return (
+                <div
+                  key={opt.value}
+                  onClick={(e) => toggleOption(e, opt)}
+                  className={`px-4 py-3 cursor-pointer transition-colors flex items-center gap-3 ${
+                    isSelected
+                      ? "bg-blue-50 text-blue-700"
+                      : "hover:bg-gray-100 text-gray-700"
+                  }`}
+                >
+                  <div
+                    className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-all ${
+                      isSelected
+                        ? "bg-blue-600 border-blue-600"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    {isSelected && (
+                      <svg
+                        className="w-3 h-3 text-white"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="3"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path d="M5 13l4 4L19 7"></path>
+                      </svg>
+                    )}
+                  </div>
+                  <span className="font-medium">{opt.label}</span>
+                </div>
+              );
+            })}
+            <div className="sticky bottom-0 px-4 py-2 border-t border-gray-200 bg-gray-50 flex justify-between items-center text-sm">
+              <span className="text-gray-600">已選 {value.length} 項</span>
+              <div className="flex items-center gap-3">
+                {value.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-red-600 hover:text-red-700 font-medium"
+                    onClick={(e) => clearAll(e)}
+                  >
+                    清除全部
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="text-blue-600 hover:text-blue-700 font-medium"
+                  onClick={(e) => confirmSelection(e)}
+                >
+                  確定
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 export default function DailyWorkRecords() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [token, setToken] = useState("");
@@ -300,146 +456,6 @@ export default function DailyWorkRecords() {
     setter((prev) => ({ ...prev, details: value }));
   };
 
-
-  const MultiSelect = ({ options, value = [], onChange, placeholder }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const dropdownRef = useRef(null);
-    const selectedItems = options.filter((opt) => value.includes(opt.value));
-
-    useEffect(() => {
-      const handleClickOutside = (e) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-          setIsOpen(false);
-        }
-      };
-      if (isOpen) {
-        document.addEventListener("mousedown", handleClickOutside);
-      }
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
-    }, [isOpen]);
-
-    const toggleOption = (e, opt) => {
-      e.stopPropagation();
-      const exists = value.includes(opt.value);
-      const next = exists
-        ? value.filter((v) => v !== opt.value)
-        : [...value, opt.value];
-      onChange(next);
-    };
-
-    const removeItem = (e, val) => {
-      e.stopPropagation();
-      onChange(value.filter((v) => v !== val));
-    };
-
-    const clearAll = (e) => {
-      e.stopPropagation();
-      onChange([]);
-    };
-
-    return (
-      <div className="relative z-50" ref={dropdownRef}>
-        <div
-          onClick={() => setIsOpen((p) => !p)}
-          className="min-h-[48px] w-full px-3 py-2 border border-gray-300 rounded-md cursor-pointer hover:border-blue-400 transition-colors bg-white flex items-center justify-between"
-        >
-          <div className="flex flex-wrap gap-2 flex-1">
-            {selectedItems.length === 0 ? (
-              <span className="text-gray-400">
-                {placeholder || "請選擇公司"}
-              </span>
-            ) : (
-              selectedItems.map((item) => (
-                <span
-                  key={item.value}
-                  className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-xs font-medium"
-                >
-                  {item.label}
-                  <button
-                    type="button"
-                    onClick={(e) => removeItem(e, item.value)}
-                    className="hover:bg-blue-100 rounded-full p-0.5 transition-colors"
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              ))
-            )}
-          </div>
-          <ChevronDown
-            size={18}
-            className={`ml-2 text-gray-500 transition-transform ${
-              isOpen ? "rotate-180" : ""
-            }`}
-          />
-        </div>
-
-        {isOpen && (
-          <>
-            {/* 全屏遮罩，避免點到背景內容 */}
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => setIsOpen(false)}
-            />
-            <div
-              className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {options.map((opt) => {
-                const isSelected = value.includes(opt.value);
-                return (
-                  <div
-                    key={opt.value}
-                    onClick={(e) => toggleOption(e, opt)}
-                    className={`px-4 py-3 cursor-pointer transition-colors flex items-center gap-3 ${
-                      isSelected
-                        ? "bg-blue-50 text-blue-700"
-                        : "hover:bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    <div
-                      className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-all ${
-                        isSelected ? "bg-blue-600 border-blue-600" : "border-gray-300"
-                      }`}
-                    >
-                      {isSelected && (
-                        <svg
-                          className="w-3 h-3 text-white"
-                          fill="none"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="3"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path d="M5 13l4 4L19 7"></path>
-                        </svg>
-                      )}
-                    </div>
-                    <span className="font-medium">{opt.label}</span>
-                  </div>
-                );
-              })}
-              {value.length > 0 && (
-                <div className="sticky bottom-0 px-4 py-2 border-t border-gray-200 bg-gray-50 flex justify-between items-center text-sm">
-                  <span className="text-gray-600">已選 {value.length} 項</span>
-                  <button
-                    type="button"
-                    className="text-red-600 hover:text-red-700 font-medium"
-                    onClick={(e) => clearAll(e)}
-                  >
-                    清除全部
-                  </button>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    );
-  };
 
   const handleLogout = useCallback(() => {
     setToken("");

@@ -75,12 +75,14 @@ func GetAttendanceTime(c *gin.Context) {
 	}
 
 	query := `
-		SELECT A.BEGTM, A.ENDTM
-		FROM EP_NEW.EPDAYT00 A
-		WHERE A.COMPID = :1
-			AND A.EMPNO = :2
-			AND A.YMD = :3
-		ORDER BY A.BEGTM
+		SELECT
+			MIN(CASE WHEN T.F_BE = 'A' THEN TO_NUMBER(LPAD(T.HHMM, 4, '0')) END) AS BEGTM,
+			MAX(CASE WHEN T.F_BE = 'B' THEN TO_NUMBER(LPAD(T.HHMM, 4, '0')) END) AS ENDTM
+		FROM EP_NEW.EPTXTW10 T
+		LEFT JOIN EP_NEW.EPEMPT00 E ON T.EMPID = E.EMPID
+		WHERE E.COMPID = :1
+			AND E.EMPNO = :2
+			AND T.YMD = :3
 	`
 	rows, err := config.OracleDB.Query(query, compid, empno, ymd)
 	if err != nil {
