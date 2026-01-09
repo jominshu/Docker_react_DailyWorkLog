@@ -1259,8 +1259,8 @@ export default function DailyWorkRecords() {
     }
   };
 
-  const summaryDate =
-    currentRecord.date || new Date().toISOString().split("T")[0];
+  const todayDate = new Date().toISOString().split("T")[0];
+  const summaryDate = currentRecord.date || todayDate;
   const todaysRecords = records.filter((r) => {
     const d = (r.sup_date || "").split("T")[0];
     return d === summaryDate;
@@ -1905,7 +1905,7 @@ export default function DailyWorkRecords() {
                 {currentUser.userName || currentUser.employeeId}
               </div>
               <div className="text-sm opacity-80 mt-1">
-                今日日期：{summaryDate}
+                今日日期：{todayDate}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full sm:w-auto">
@@ -1918,7 +1918,11 @@ export default function DailyWorkRecords() {
                 <div className="text-xl font-bold">{monthlyHours.toFixed(1)}</div>
               </div>
               <div className="bg-white/15 backdrop-blur rounded-lg px-4 py-3">
-                <div className="text-xs opacity-80">出勤時間</div>
+                <div className="text-xs opacity-80">
+                  {summaryDate === todayDate
+                    ? "出勤時間(今日)"
+                    : `出勤時間 (${summaryDate})`}
+                </div>
                 <div className="text-xl font-bold">{attendanceTimeDisplay}</div>
               </div>
             </div>
