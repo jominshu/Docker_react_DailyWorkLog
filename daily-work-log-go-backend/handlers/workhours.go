@@ -41,9 +41,9 @@ func CreateWorkHours(c *gin.Context) {
 
 	query := `
 		INSERT INTO work_hours 
-		(empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, compid, empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description, confirmed
+		(empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description, memo)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, compid, empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description, memo, confirmed
 	`
 	workHoursList := make([]models.WorkHours, 0, len(input.SupCompIDs))
 	tx, err := config.PostgresDB.Begin()
@@ -75,6 +75,7 @@ func CreateWorkHours(c *gin.Context) {
 			input.SupDate,
 			input.TotalHours,
 			input.Description,
+			input.Memo,
 		).Scan(
 			&workHours.ID,
 			&workHours.CompID,
@@ -85,6 +86,7 @@ func CreateWorkHours(c *gin.Context) {
 			&workHours.SupDate,
 			&workHours.TotalHours,
 			&workHours.Description,
+			&workHours.Memo,
 			&workHours.Confirmed,
 		)
 		if err != nil {
@@ -124,7 +126,7 @@ func GetWorkHoursByEmpNo(c *gin.Context) {
 	}
 
 	query := `
-		SELECT id, compid, empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description, confirmed
+		SELECT id, compid, empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description, memo, confirmed
 		FROM work_hours 
 		WHERE empno = $1
 		ORDER BY sup_date DESC, id DESC
@@ -153,6 +155,7 @@ func GetWorkHoursByEmpNo(c *gin.Context) {
 			&wh.SupDate,
 			&wh.TotalHours,
 			&wh.Description,
+			&wh.Memo,
 			&wh.Confirmed,
 		); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -201,7 +204,7 @@ func UpdateWorkHours(c *gin.Context) {
 	// 先取得原始資料
 	var existing models.WorkHours
 	querySelect := `
-		SELECT id, compid, empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description, confirmed
+		SELECT id, compid, empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description, memo, confirmed
 		FROM work_hours
 		WHERE id = $1
 		FOR UPDATE
@@ -216,6 +219,7 @@ func UpdateWorkHours(c *gin.Context) {
 		&existing.SupDate,
 		&existing.TotalHours,
 		&existing.Description,
+		&existing.Memo,
 		&existing.Confirmed,
 	)
 	if err != nil {
@@ -263,6 +267,7 @@ func UpdateWorkHours(c *gin.Context) {
 	oldSupDate := existing.SupDate
 	oldTotalHours := existing.TotalHours
 	oldDescription := existing.Description
+	oldMemo := existing.Memo
 
 	supDate := existing.SupDate
 	if input.SupDate != nil {
@@ -286,6 +291,10 @@ func UpdateWorkHours(c *gin.Context) {
 	if input.Description != nil {
 		description = input.Description
 	}
+	memo := existing.Memo
+	if input.Memo != nil {
+		memo = input.Memo
+	}
 
 	// 更新資料
 	queryUpdate := `
@@ -294,9 +303,10 @@ func UpdateWorkHours(c *gin.Context) {
 			sup_fact_id = $2,
 			sup_date = $3,
 			total_hours = $4,
-			description = $5
-		WHERE id = $6
-		RETURNING id, compid, empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description, confirmed
+			description = $5,
+			memo = $6
+		WHERE id = $7
+		RETURNING id, compid, empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description, memo, confirmed
 	`
 
 	var updated models.WorkHours
@@ -307,7 +317,7 @@ func UpdateWorkHours(c *gin.Context) {
 		})
 		return
 	}
-	err = tx.QueryRow(queryUpdate, primaryCompID, primaryCompID, supDate, totalHours, description, id).Scan(
+	err = tx.QueryRow(queryUpdate, primaryCompID, primaryCompID, supDate, totalHours, description, memo, id).Scan(
 		&updated.ID,
 		&updated.CompID,
 		&updated.EmpNo,
@@ -317,6 +327,7 @@ func UpdateWorkHours(c *gin.Context) {
 		&updated.SupDate,
 		&updated.TotalHours,
 		&updated.Description,
+		&updated.Memo,
 		&updated.Confirmed,
 	)
 	if err != nil {
@@ -335,14 +346,16 @@ func UpdateWorkHours(c *gin.Context) {
 			SET sup_date = $1,
 				total_hours = $2,
 				description = $3,
+				memo = $4,
 				sup_fact_id = sup_compid
-			WHERE empno = $4
-				AND sup_date = $5
-				AND total_hours = $6
-				AND description IS NOT DISTINCT FROM $7
-				AND sup_compid = ANY($8)
-				AND id <> $9
-		`, supDate, totalHours, description, existing.EmpNo, oldSupDate, oldTotalHours, oldDescription, pq.Array(compIDs), id)
+			WHERE empno = $5
+				AND sup_date = $6
+				AND total_hours = $7
+				AND description IS NOT DISTINCT FROM $8
+				AND memo IS NOT DISTINCT FROM $9
+				AND sup_compid = ANY($10)
+				AND id <> $11
+		`, supDate, totalHours, description, memo, existing.EmpNo, oldSupDate, oldTotalHours, oldDescription, oldMemo, pq.Array(compIDs), id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "更新失敗",
@@ -357,9 +370,10 @@ func UpdateWorkHours(c *gin.Context) {
 				AND sup_date = $2
 				AND total_hours = $3
 				AND description IS NOT DISTINCT FROM $4
-				AND NOT (sup_compid = ANY($5))
-				AND id <> $6
-		`, existing.EmpNo, oldSupDate, oldTotalHours, oldDescription, pq.Array(compIDs), id)
+				AND memo IS NOT DISTINCT FROM $5
+				AND NOT (sup_compid = ANY($6))
+				AND id <> $7
+		`, existing.EmpNo, oldSupDate, oldTotalHours, oldDescription, oldMemo, pq.Array(compIDs), id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "更新失敗",
@@ -370,8 +384,8 @@ func UpdateWorkHours(c *gin.Context) {
 
 		insertQuery := `
 			INSERT INTO work_hours
-			(empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			(empno, empnm, sup_compid, sup_fact_id, sup_date, total_hours, description, memo)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		`
 		for _, compID := range compIDs {
 			compID = strings.TrimSpace(compID)
@@ -388,8 +402,9 @@ func UpdateWorkHours(c *gin.Context) {
 						AND sup_date = $3
 						AND total_hours = $4
 						AND description IS NOT DISTINCT FROM $5
+						AND memo IS NOT DISTINCT FROM $6
 				)
-			`, existing.EmpNo, compID, supDate, totalHours, description).Scan(&exists)
+			`, existing.EmpNo, compID, supDate, totalHours, description, memo).Scan(&exists)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error":   "更新失敗",
@@ -409,6 +424,7 @@ func UpdateWorkHours(c *gin.Context) {
 				supDate,
 				totalHours,
 				description,
+				memo,
 			); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error":   "更新失敗",

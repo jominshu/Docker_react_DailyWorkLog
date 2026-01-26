@@ -13,6 +13,7 @@ type WorkHours struct {
 	SupDate     time.Time `json:"sup_date"`
 	TotalHours  float64   `json:"total_hours"`
 	Description *string   `json:"description"`
+	Memo        *string   `json:"memo"`
 	Confirmed   bool      `json:"confirmed"`
 }
 
@@ -23,6 +24,7 @@ type WorkHoursInput struct {
 	SupDate     string   `json:"sup_date" binding:"required"`
 	TotalHours  float64  `json:"total_hours" binding:"required"`
 	Description *string  `json:"description"`
+	Memo        *string  `json:"memo"`
 }
 
 type Company struct {
@@ -35,4 +37,5 @@ type UpdateWorkHoursInput struct {
 	SupDate     *string   `json:"sup_date"`    // 日期，可選，格式 YYYY-MM-DD
 	TotalHours  *float64  `json:"total_hours"` // 時數，可選
 	Description *string   `json:"description"` // 工作內容，可選
+	Memo        *string   `json:"memo"`        // 備註，可選
 }

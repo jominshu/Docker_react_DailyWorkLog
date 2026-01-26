@@ -26,6 +26,7 @@ type SupportHoursDetailRow struct {
 	SupDate     *time.Time `json:"sup_date,omitempty"`
 	TotalHours  *float64   `json:"total_hours,omitempty"`
 	Description *string    `json:"description"`
+	Memo        *string    `json:"memo"`
 }
 
 type SupportHoursEmployeeSummaryRow struct {
@@ -247,7 +248,7 @@ func GetSupportHoursDetail(c *gin.Context) {
 	}
 
 	query := `
-		SELECT empno, empnm, sup_compid, sup_date, total_hours, description
+		SELECT empno, empnm, sup_compid, sup_date, total_hours, description, memo
 		FROM work_hours
 		WHERE sup_compid = $1
 			AND sup_date >= $2
@@ -271,7 +272,8 @@ func GetSupportHoursDetail(c *gin.Context) {
 		var supDate time.Time
 		var totalHours float64
 		var description *string
-		if err := rows.Scan(&empno, &empnm, &supCompID, &supDate, &totalHours, &description); err != nil {
+		var memo *string
+		if err := rows.Scan(&empno, &empnm, &supCompID, &supDate, &totalHours, &description, &memo); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "PostgreSQL 明細解析失敗",
 				"details": err.Error(),
@@ -292,6 +294,7 @@ func GetSupportHoursDetail(c *gin.Context) {
 			SupDate:     &supDateCopy,
 			TotalHours:  &totalHoursCopy,
 			Description: description,
+			Memo:        memo,
 		})
 	}
 

@@ -152,6 +152,7 @@ const buildDefaultRecord = (list) => {
     date: new Date().toISOString().split("T")[0],
     hours: "",
     details: "",
+    memo: "",
   };
 };
 
@@ -334,6 +335,7 @@ export default function DailyWorkRecords() {
     date: new Date().toISOString().split("T")[0],
     hours: "",
     details: "",
+    memo: "",
   });
   const [editRecordId, setEditRecordId] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -1144,6 +1146,7 @@ export default function DailyWorkRecords() {
           sup_date: currentRecord.date,
           total_hours: parseFloat(currentRecord.hours),
           description: currentRecord.details,
+          memo: currentRecord.memo,
         }),
       });
 
@@ -1213,6 +1216,7 @@ export default function DailyWorkRecords() {
       date: record.sup_date.split("T")[0],
       hours: record.total_hours,
       details: record.description || "",
+      memo: record.memo || "",
     });
   };
 
@@ -1238,6 +1242,7 @@ export default function DailyWorkRecords() {
           sup_date: editForm.date,
           total_hours: parseFloat(editForm.hours),
           description: editForm.details,
+          memo: editForm.memo,
         }),
       });
 
@@ -1426,20 +1431,26 @@ export default function DailyWorkRecords() {
 
   const exportToCSV = () => {
     if (filteredRecords.length === 0) return;
-    const header = ["公司", "日期", "時數", "工作內容"];
+    const header = ["公司", "日期", "時數", "工作內容", "備註"];
     const rows = filteredRecords.map((r) => {
       const dateStr = (r.sup_date || "").split("T")[0];
       const compNames = companyNamesFromCodes(normalizeCompanyCodes(r)).join(
         " / "
       );
-      return [compNames, dateStr, r.total_hours ?? "", r.description || ""];
+      return [
+        compNames,
+        dateStr,
+        r.total_hours ?? "",
+        r.description || "",
+        r.memo || "",
+      ];
     });
     downloadCSV("work-hours.csv", header, rows);
   };
 
   const exportMonthlyCSV = () => {
     if (filteredMonthlyRows.length === 0) return;
-    const header = ["工號", "姓名", "公司", "日期", "時數", "工作內容"];
+    const header = ["工號", "姓名", "公司", "日期", "時數", "工作內容", "備註"];
     const rows = filteredMonthlyRows.map((r) => [
       r.empno,
       r.empnm,
@@ -1447,6 +1458,7 @@ export default function DailyWorkRecords() {
       r.sup_date ? r.sup_date.split("T")[0] : "",
       r.total_hours ?? "",
       r.description || "",
+      r.memo || "",
     ]);
     downloadCSV("monthly-report.csv", header, rows);
   };
@@ -1537,6 +1549,27 @@ export default function DailyWorkRecords() {
       ];
     });
     downloadCSV("支援工時匯總.csv", header, rows);
+  };
+  const exportSummaryDetailCSV = () => {
+    if (summaryDetailVisibleRows.length === 0) return;
+    const header = ["工號", "姓名", "公司", "日期", "時數", "工作內容", "備註"];
+    const rows = summaryDetailVisibleRows.map((row) => {
+      const dateStr = row.sup_date ? row.sup_date.split("T")[0] : "";
+      const hoursText =
+        row.total_hours === undefined || row.total_hours === null
+          ? ""
+          : Number(row.total_hours).toFixed(1);
+      return [
+        row.empno || "",
+        row.empnm || "",
+        row.com_desc || row.compid || "",
+        dateStr,
+        hoursText,
+        row.description || "",
+        row.memo || "",
+      ];
+    });
+    downloadCSV("support-detail.csv", header, rows);
   };
   const summaryTotalDisplay = formatHours(summaryTotalHours);
   const employeeWorkHoursDisplay = employeeWorkLoading || employeeWorkError
@@ -2060,6 +2093,24 @@ export default function DailyWorkRecords() {
                 )}
               </div>
 
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  備註
+                </label>
+                <textarea
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="可填寫其他備註..."
+                  value={currentRecord.memo || ""}
+                  onChange={(e) =>
+                    setCurrentRecord({
+                      ...currentRecord,
+                      memo: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
               <button
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:bg-gray-400"
                 onClick={addRecord}
@@ -2202,6 +2253,24 @@ export default function DailyWorkRecords() {
                               )}
                             </div>
 
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                備註
+                              </label>
+                              <textarea
+                                rows={3}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="可填寫其他備註..."
+                                value={editForm.memo || ""}
+                                onChange={(e) =>
+                                  setEditForm({
+                                    ...editForm,
+                                    memo: e.target.value,
+                                  })
+                                }
+                              />
+                            </div>
+
                             <div className="flex gap-3">
                               <button
                                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
@@ -2235,6 +2304,11 @@ export default function DailyWorkRecords() {
                                   </span>
                                 )}
                               </div>
+                              {record.memo && (
+                                <div className="mt-1 text-xs text-gray-500">
+                                  備註：{record.memo}
+                                </div>
+                              )}
                             </div>
                             <div className="flex gap-2 ml-4">
                               <button
@@ -2455,6 +2529,24 @@ export default function DailyWorkRecords() {
                             )}
                           </div>
 
+                          <div className="mb-3">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              備註
+                            </label>
+                            <textarea
+                              rows={3}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="可填寫其他備註..."
+                              value={editForm.memo || ""}
+                              onChange={(e) =>
+                                setEditForm({
+                                  ...editForm,
+                                  memo: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+
                           <div className="flex gap-3">
                             <button
                               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
@@ -2494,6 +2586,11 @@ export default function DailyWorkRecords() {
                             {record.description && (
                               <p className="text-gray-600 text-sm mt-2">
                                 {record.description}
+                              </p>
+                            )}
+                            {record.memo && (
+                              <p className="text-gray-500 text-sm mt-1">
+                                備註：{record.memo}
                               </p>
                             )}
                           </div>
@@ -2695,6 +2792,9 @@ export default function DailyWorkRecords() {
                       <th className="text-left px-3 py-2 font-semibold">
                         工作內容
                       </th>
+                      <th className="text-left px-3 py-2 font-semibold">
+                        備註
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2724,6 +2824,9 @@ export default function DailyWorkRecords() {
                           </td>
                           <td className="px-3 py-2 text-gray-700">
                             {r.description || ""}
+                          </td>
+                          <td className="px-3 py-2 text-gray-700">
+                            {r.memo || ""}
                           </td>
                         </tr>
                       );
@@ -3095,13 +3198,23 @@ export default function DailyWorkRecords() {
                     期間：{summaryYearLabel}-{summaryMonthLabel}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="p-2 text-gray-500 hover:text-gray-700"
-                  onClick={closeSummaryDetail}
-                >
-                  <X size={18} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-sm border border-blue-600 text-blue-600 rounded-md hover:bg-blue-50 disabled:opacity-50"
+                    onClick={exportSummaryDetailCSV}
+                    disabled={summaryDetailVisibleRows.length === 0}
+                  >
+                    匯出 CSV
+                  </button>
+                  <button
+                    type="button"
+                    className="p-2 text-gray-500 hover:text-gray-700"
+                    onClick={closeSummaryDetail}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
               <div className="p-4 overflow-auto max-h-[70vh]">
                 {summaryDetailLoading ? (
@@ -3136,6 +3249,9 @@ export default function DailyWorkRecords() {
                         <th className="text-left px-3 py-2 font-medium">
                           工作內容
                         </th>
+                        <th className="text-left px-3 py-2 font-medium">
+                          備註
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3169,6 +3285,9 @@ export default function DailyWorkRecords() {
                             </td>
                             <td className="px-3 py-2 text-gray-700">
                               {row.description || "-"}
+                            </td>
+                            <td className="px-3 py-2 text-gray-700">
+                              {row.memo || "-"}
                             </td>
                           </tr>
                         );

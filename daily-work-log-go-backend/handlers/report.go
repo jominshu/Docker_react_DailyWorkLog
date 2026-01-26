@@ -19,6 +19,7 @@ type MonthlyReportRow struct {
 	SupDate     *time.Time `json:"sup_date,omitempty"`
 	TotalHours  *float64   `json:"total_hours,omitempty"`
 	Description *string    `json:"description"`
+	Memo        *string    `json:"memo"`
 	SupCompID   string     `json:"sup_compid,omitempty"`
 	SupCompIDs  []string   `json:"sup_compids,omitempty"`
 	ComDesc     string     `json:"com_desc,omitempty"`
@@ -171,7 +172,7 @@ func GetMonthlyReport(c *gin.Context) {
 	}
 
 	workQuery := `
-		SELECT empno, empnm, sup_compid, sup_date, total_hours, description
+		SELECT empno, empnm, sup_compid, sup_date, total_hours, description, memo
 		FROM work_hours
 		WHERE empno = ANY($1)
 		  AND sup_date >= $2
@@ -196,8 +197,9 @@ func GetMonthlyReport(c *gin.Context) {
 		var supDate time.Time
 		var totalHours float64
 		var description *string
+		var memo *string
 
-		if err := pgRows.Scan(&empno, &empnm, &supCompID, &supDate, &totalHours, &description); err != nil {
+		if err := pgRows.Scan(&empno, &empnm, &supCompID, &supDate, &totalHours, &description, &memo); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "PostgreSQL 資料解析失敗",
 				"details": err.Error(),
@@ -233,6 +235,7 @@ func GetMonthlyReport(c *gin.Context) {
 			SupDate:     &supDateCopy,
 			TotalHours:  &totalHoursCopy,
 			Description: description,
+			Memo:        memo,
 			SupCompID:   supCompID,
 			SupCompIDs:  compCodes,
 			ComDesc:     strings.Join(compDescs, " / "),
